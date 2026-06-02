@@ -510,7 +510,10 @@
         <button class="speed-btn" id="speed2Btn" onclick="setSpeed(2)">2×</button>
         <button class="speed-btn" id="speed3Btn" onclick="setSpeed(4)">4×</button>
       </div>
-      <button class="skip-btn" id="skipBattleBtn" onclick="skipBattle()">Skip Battle</button>
+      <div style="display:flex;gap:6px;">
+        <button class="skip-btn" id="skipBattleBtn" onclick="skipBattle()">Skip Battle</button>
+        <button class="skip-btn" id="nextDayBtn" onclick="proceedNextDay()" style="display:none;background:linear-gradient(180deg, var(--gold-dim) 0%, #3d2f0f 100%);border-color:var(--gold);">Continue</button>
+      </div>
     </div>
   </div>
 </div>
@@ -587,21 +590,28 @@
 // DEFINITIONS
 // ═══════════════════════════════════════════
 
-const MAX_TROOPS = 5;
+
 
 const TROOP_DEFS = {
-  swordsman: { name:'Swordsman', icon:'⚔️', level:1, cost:2, maxHp:20, hpMin:8,  hpMax:12, turnsTilAtk:2, critChance:0,    desc:'Reliable frontline fighter.' },
-  archer:    { name:'Archer',    icon:'🏹', level:1, cost:3, maxHp:12, hpMin:6,  hpMax:10, turnsTilAtk:3, critChance:0,    airCapable:true, desc:'Can target Moths.' },
-  mage:      { name:'Mage',      icon:'🔮', level:2, cost:5, maxHp:10, hpMin:4,  hpMax:16, turnsTilAtk:4, critChance:0,    airCapable:true, desc:'High variance dmg; targets Moths.' },
-  giant:     { name:'Giant',     icon:'🗿', level:2, cost:5, maxHp:50, hpMin:6,  hpMax:6,  turnsTilAtk:6, critChance:0.25, desc:'Massive HP; 25% crit chance.' },
-  tiger:     { name:'Tiger',     icon:'🐯', level:2, cost:6, maxHp:40, hpMin:8,  hpMax:12, turnsTilAtk:5, critChance:0.50, desc:'50% crit chance. Ferocious.' },
+  swordsman: { name:'Swordsman', icon:'⚔️', cost:2, maxHp:20, hpMin:6,  hpMax:10, turnsTilAtk:2, critChance:0,    desc:'Reliable frontline fighter.', color:'#4ac8d8' },
+  archer:    { name:'Archer',    icon:'🏹', cost:3, maxHp:15, hpMin:3,  hpMax:8, turnsTilAtk:3, critChance:0,    airCapable:true, desc:'Can target Moths.', color:'#4ac8d8' },
+  mage:      { name:'Mage',      icon:'🔮', cost:5, maxHp:10, hpMin:4,  hpMax:16, turnsTilAtk:3, critChance:0,    airCapable:true, desc:'High variance dmg; targets Moths.', color:'#55aa44' },
+  giant:     { name:'Giant',     icon:'🗿', cost:5, maxHp:50, hpMin:6,  hpMax:10,  turnsTilAtk:4, critChance:0.25, desc:'Massive HP; 25% crit chance.', color:'#55aa44' },
+  tiger:     { name:'Tiger',     icon:'🐯', cost:6, maxHp:40, hpMin:8,  hpMax:12, turnsTilAtk:5, critChance:0.50, desc:'50% crit chance. Ferocious.', color:'#55aa44' },
 };
 
 const ENEMY_DEFS = {
   goblin: { name:'Goblin', icon:'👺', maxHp:11, hpMin:1, hpMax:4,  turnsTilAtk:1, critChance:0.25, airOnly:false, lifesteal:0 },
   moth:   { name:'Moth',   icon:'🦋', maxHp:15, hpMin:1, hpMax:2,  turnsTilAtk:3, critChance:0,    airOnly:true,  lifesteal:0 },
-  lich:   { name:'Lich',   icon:'💀', maxHp:70, hpMin:8, hpMax:12, turnsTilAtk:2, critChance:0,    airOnly:false, lifesteal:10, isBoss:true },
+  lich:   { name:'Lich',   icon:'💀', maxHp:100, hpMin:10, hpMax:15, turnsTilAtk:2, critChance:0,    airOnly:false, lifesteal:10, isBoss:true },
 };
+
+// Level 2 stat upgrades for troops
+const TROOP_UPGRADES = {
+  swordsman: { maxHp: 25, hpMin: 11, hpMax: 15 },
+  archer:    { maxHp: 15, hpMin: 8,  hpMax: 12 },
+};
+
 
 // Wave definitions: [{type, count}, ...]
 const WAVES = [
@@ -631,6 +641,8 @@ function newGame() {
     battleOver: false,
     gameOver: false,
     won: false,
+    maxTroops: 5,
+    garrisonLevel: 1,
   };
   battleSpeed = 1;
   clearLog();
@@ -648,7 +660,7 @@ function makeTroop(typeKey) {
     typeKey,
     name: def.name,
     icon: def.icon,
-    level: def.level,
+    level: 1,
     cost: def.cost,
     maxHp: def.maxHp,
     hp: def.maxHp,
@@ -690,11 +702,12 @@ function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + m
 // ═══════════════════════════════════════════
 function generateCharChoices() {
   const keys = Object.keys(TROOP_DEFS);
-  const lv1 = keys.filter(k => TROOP_DEFS[k].level === 1);
-  const lv2 = keys.filter(k => TROOP_DEFS[k].level === 2);
+  // 75% chance for lower-cost troops (swordsman, archer), 25% for expensive ones
+  const budget = keys.filter(k => TROOP_DEFS[k].cost <= 3);
+  const expensive = keys.filter(k => TROOP_DEFS[k].cost > 3);
 
-  function weightedPick(pool) {
-    return Math.random() < 0.75 ? lv1[Math.floor(Math.random()*lv1.length)] : lv2[Math.floor(Math.random()*lv2.length)];
+  function weightedPick() {
+    return Math.random() < 0.75 ? budget[Math.floor(Math.random()*budget.length)] : expensive[Math.floor(Math.random()*expensive.length)];
   }
 
   const chosen = [];
@@ -704,7 +717,6 @@ function generateCharChoices() {
     const pick = weightedPick();
     if (!chosen.includes(pick)) chosen.push(pick);
   }
-  // Fallback: fill with any remaining unique keys if needed
   for (const k of keys) {
     if (chosen.length >= 3) break;
     if (!chosen.includes(k)) chosen.push(k);
@@ -729,9 +741,7 @@ function showCharacterSelect(isFirst) {
     const def = TROOP_DEFS[key];
     const card = document.createElement('div');
     card.className = 'char-card';
-    const lvLabel = def.level === 1
-      ? '<span class="level-badge lv1">Lv 1</span>'
-      : '<span class="level-badge lv2">Lv 2</span>';
+    const lvLabel = '<span class="level-badge lv1" style="border-color:' + def.color + ';background:rgba(' + hexToRgb(def.color) + ',0.18);color:' + def.color + ';">Lv 1</span>';
 
     card.innerHTML = `
       <div class="char-icon">${def.icon}</div>
@@ -747,14 +757,14 @@ function showCharacterSelect(isFirst) {
     `;
     card.onclick = () => {
       if (!isFirst && state.gold < def.cost) return;
-      if (!isFirst && state.troops.filter(t => t.hp > 0).length >= MAX_TROOPS) return;
+      if (!isFirst && state.troops.filter(t => t.hp > 0).length >= state.maxTroops) return;
       if (!isFirst) state.gold -= def.cost;
       state.troops.push(makeTroop(key));
       overlay.classList.remove('active');
       renderAll();
       if (charSelectCallback) { charSelectCallback(); charSelectCallback = null; }
     };
-    const atCap = !isFirst && state.troops.filter(t => t.hp > 0).length >= MAX_TROOPS;
+    const atCap = !isFirst && state.troops.filter(t => t.hp > 0).length >= state.maxTroops;
     if (!isFirst && (state.gold < def.cost || atCap)) card.style.opacity = '0.4';
     opts.appendChild(card);
   });
@@ -768,20 +778,29 @@ function showCharacterSelect(isFirst) {
 function renderShop() {
   const list = document.getElementById('shopList');
   const aliveTroops = state.troops.filter(t => t.hp > 0).length;
-  const atCap = aliveTroops >= MAX_TROOPS;
+  const atCap = aliveTroops >= state.maxTroops;
 
-  const items = [
-    { key:'swordsman', label:'Recruit Swordsman', desc:`20 HP · 8–12 dmg · Atk every 2t`, cost:2 },
-    { key:'archer',    label:'Recruit Archer',    desc:`12 HP · 6–10 dmg · Atk every 3t · Air`, cost:3 },
-    { key:'mage',      label:'Recruit Mage',      desc:`10 HP · 4–16 dmg · Atk every 4t · Air`, cost:5 },
-    { key:'giant',     label:'Recruit Giant',     desc:`50 HP · 6 dmg · Atk every 6t · 25% crit · Blocks 25% dmg to allies`, cost:5 },
-    { key:'tiger',     label:'Recruit Tiger',     desc:`40 HP · 8–12 dmg · Atk every 5t · 50% crit`, cost:6 },
-  ];
-
-  list.innerHTML = `<div style="font-size:0.65rem;color:${atCap ? 'var(--blood-bright)' : 'var(--parchment-dim)'};margin-bottom:8px;font-family:'Cinzel',serif;letter-spacing:0.1em;">
-    Garrison: ${aliveTroops} / ${MAX_TROOPS}${atCap ? ' — Full' : ''}
+  list.innerHTML = `<div style="font-size:0.65rem;color:var(--parchment-dim);font-family:'Cinzel',serif;letter-spacing:0.1em;margin-bottom:10px;">
+    Garrison: ${aliveTroops} / ${state.maxTroops}${atCap ? ' — Full' : ''}
   </div>`;
 
+  // Garrison Expansion Upgrade
+  const canUpgradeGarrison = state.gold >= 4 && state.garrisonLevel < 3;
+  const expansionDiv = document.createElement('div');
+  expansionDiv.className = 'shop-item' + (canUpgradeGarrison ? '' : ' disabled');
+  expansionDiv.style.marginBottom = '6px';
+  const expansionText = state.garrisonLevel >= 3 ? 'Garrison Maxed (Lv3)' : `Garrison Expansion <span style="font-size:0.58rem;color:var(--purple);border:1px solid var(--purple);border-radius:2px;padding:1px 5px;font-family:'Cinzel',serif;letter-spacing:0.1em;">Lv${state.garrisonLevel}</span>`;
+  expansionDiv.innerHTML = `
+    <div class="shop-icon">⬆️</div>
+    <div class="shop-info">
+      <div class="shop-name">${expansionText}</div>
+      <div class="shop-desc">${state.garrisonLevel >= 3 ? 'Maximum capacity reached' : `Increase max team size to ${state.maxTroops + 1}`}</div>
+    </div>
+    <button class="buy-btn" ${canUpgradeGarrison ? '' : 'disabled'} onclick="buyGarrisonUpgrade()">4g</button>
+  `;
+  list.appendChild(expansionDiv);
+
+  // Field Medic / Heal
   const canHeal = state.gold >= 3 && state.troops.some(t => t.hp > 0 && t.hp < t.maxHp);
   const healDiv = document.createElement('div');
   healDiv.className = 'shop-item' + (canHeal ? '' : ' disabled');
@@ -796,18 +815,28 @@ function renderShop() {
   `;
   list.appendChild(healDiv);
 
+  // Recruitment Items
+  const items = [
+    { key:'swordsman', cost:2 },
+    { key:'archer',    cost:3 },
+    { key:'mage',      cost:5 },
+    { key:'giant',     cost:5 },
+    { key:'tiger',     cost:6 },
+  ];
+
   items.forEach(item => {
     const def = TROOP_DEFS[item.key];
     const canAfford = state.gold >= item.cost && !atCap;
     const div = document.createElement('div');
     div.className = 'shop-item' + (canAfford ? '' : ' disabled');
+    const colorBadge = '<span class="level-badge lv1" style="border-color:' + def.color + ';background:rgba(' + hexToRgb(def.color) + ',0.18);color:' + def.color + ';">Lv1</span>';
+    const dmgStr = `${def.hpMin}–${def.hpMax} dmg`;
+    const desc = `${def.maxHp} HP · ${dmgStr} · Atk every ${def.turnsTilAtk}t${def.airCapable ? ' · Air' : ''}`;
     div.innerHTML = `
       <div class="shop-icon">${def.icon}</div>
       <div class="shop-info">
-        <div class="shop-name">${item.label}
-          ${def.level===1 ? '<span class="level-badge lv1">Lv1</span>' : '<span class="level-badge lv2">Lv2</span>'}
-        </div>
-        <div class="shop-desc">${item.desc}</div>
+        <div class="shop-name">Recruit ${def.name} ${colorBadge}</div>
+        <div class="shop-desc">${desc}</div>
       </div>
       <button class="buy-btn" ${canAfford ? '' : 'disabled'} onclick="buyTroop('${item.key}')">${item.cost}g</button>
     `;
@@ -820,19 +849,58 @@ function buyHeal() {
   const healable = state.troops.filter(t => t.hp > 0 && t.hp < t.maxHp);
   if (!healable.length) return;
   state.gold -= 3;
-  healable.forEach(t => { t.hp = Math.max(t.hp, Math.floor(t.maxHp / 2)); });
-  log(`Medic tended the wounded — all troops raised to half HP.`, 'heal');
+  healable.forEach(t => { 
+    const halfHp = Math.floor(t.maxHp / 2);
+    t.hp = Math.min(t.hp + halfHp, t.maxHp);
+  });
+  log(`Medic tended the wounded — all troops healed by 50% of max HP.`, 'heal');
   renderAll();
 }
 
 function buyTroop(key) {
   const def = TROOP_DEFS[key];
   if (state.gold < def.cost) return;
-  if (state.troops.filter(t => t.hp > 0).length >= MAX_TROOPS) return;
+  if (state.troops.filter(t => t.hp > 0).length >= state.maxTroops) return;
   state.gold -= def.cost;
   state.troops.push(makeTroop(key));
   log(`Recruited a ${def.name} for ${def.cost}g.`, 'info');
   renderAll();
+}
+
+function buyGarrisonUpgrade() {
+  if (state.gold < 4) return;
+  if (state.garrisonLevel >= 3) return;
+  state.gold -= 4;
+  state.maxTroops += 1;
+  state.garrisonLevel += 1;
+  log(`Garrison expanded to ${state.maxTroops} defenders! (Garrison Lv${state.garrisonLevel})`, 'info');
+  renderAll();
+}
+
+function upgradeTroop(id) {
+  const troop = state.troops.find(t => t.id === id);
+  if (!troop) return;
+  const upgradeCost = TROOP_DEFS[troop.typeKey].cost + 1;
+  if (state.gold < upgradeCost) return;
+  state.gold -= upgradeCost;
+  troop.level = 2;
+  
+  // Apply stat upgrades
+  const upgrade = TROOP_UPGRADES[troop.typeKey];
+  if (upgrade) {
+    troop.maxHp = upgrade.maxHp;
+    troop.hpMin = upgrade.hpMin;
+    troop.hpMax = upgrade.hpMax;
+    troop.hp = upgrade.maxHp;
+  }
+  
+  log(`${troop.name} promoted to Level 2!`, 'info');
+  renderAll();
+}
+
+function hexToRgb(hex) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? `${parseInt(result[1], 16)},${parseInt(result[2], 16)},${parseInt(result[3], 16)}` : '200,190,170';
 }
 
 // ═══════════════════════════════════════════
@@ -853,21 +921,38 @@ function renderRoster() {
       pips.push(`<div class="attack-pip${i < t.atkTimer ? ' ready' : ''}"></div>`);
     }
     const alive = t.hp > 0;
+    const def = TROOP_DEFS[t.typeKey];
     const div = document.createElement('div');
     div.className = 'troop-slot' + (alive ? '' : ' dead');
+    const lvBadge = t.level === 1 
+      ? '<span class="level-badge lv1" style="border-color:' + def.color + ';background:rgba(' + hexToRgb(def.color) + ',0.18);color:' + def.color + ';">Lv1</span>'
+      : '<span class="level-badge lv2" style="border-color:' + def.color + ';background:rgba(' + hexToRgb(def.color) + ',0.18);color:' + def.color + ';">Lv2</span>';
+    
+    const canUpgrade = alive && t.level === 1 && state.garrisonLevel >= 2 && TROOP_UPGRADES[t.typeKey];
+    const upgradeCost = canUpgrade ? TROOP_DEFS[t.typeKey].cost + 1 : 0;
+    const canAffordUpgrade = canUpgrade && state.gold >= upgradeCost;
+    
+    let upgradeBtn = '';
+    if (canUpgrade) {
+      const btnStyle = canAffordUpgrade ? 'padding:4px 8px;font-size:0.65rem;' : 'padding:4px 8px;font-size:0.65rem;opacity:0.35;cursor:not-allowed;';
+      const btnDisabled = canAffordUpgrade ? '' : 'disabled';
+      upgradeBtn = `<button class="buy-btn" style="${btnStyle}" ${btnDisabled} onclick="upgradeTroop(${t.id})">${upgradeCost}g</button>`;
+    }
+    
     div.innerHTML = `
       <div class="troop-icon">${t.icon}</div>
       <div class="troop-info">
-        <div class="troop-name">${t.name}
-          ${t.level===1 ? '<span class="level-badge lv1">Lv1</span>' : '<span class="level-badge lv2">Lv2</span>'}
-        </div>
+        <div class="troop-name">${t.name} ${lvBadge}</div>
         <div class="hp-bar-wrap">
           <div class="hp-bar" style="width:${pct}%;background:${barColor};"></div>
         </div>
         <div class="troop-stats">${t.hp}/${t.maxHp} HP · ${t.hpMin}–${t.hpMax} dmg</div>
         <div class="attack-pip-row">${pips.join('')}</div>
       </div>
-      ${alive ? `<button class="remove-troop" onclick="removeTroop(${t.id})" title="Dismiss">✕</button>` : ''}
+      <div style="display:flex;gap:4px;flex-direction:column;align-items:center;flex-shrink:0;">
+        ${upgradeBtn}
+        ${alive ? `<button class="remove-troop" onclick="removeTroop(${t.id})" title="Dismiss">✕</button>` : ''}
+      </div>
     `;
     list.appendChild(div);
   });
@@ -1075,12 +1160,39 @@ function resolveBattle(won) {
     if (troop) { troop.hp = bAlly.battleHp; }
   });
 
-  document.getElementById('battleOverlay').classList.remove('active');
-
+  // Store result for later
+  state.battleResult = { won };
   if (won) {
-    const goldReward = 2 + state.wave;
-    state.gold += goldReward;
-    log(`Wave ${state.wave} defeated! Earned ${goldReward}g.`, 'win');
+    state.battleResult.goldReward = 2 + state.wave;
+  }
+
+  // Show Next Day button instead of hiding battle overlay
+  document.getElementById('skipBattleBtn').style.display = 'none';
+  document.getElementById('nextDayBtn').style.display = 'block';
+  
+  // Disable speed controls
+  document.getElementById('speed1Btn').disabled = true;
+  document.getElementById('speed2Btn').disabled = true;
+  document.getElementById('speed3Btn').disabled = true;
+}
+
+function proceedNextDay() {
+  const result = state.battleResult;
+  state.battleResult = null;
+  
+  // Clear dead troops from garrison
+  state.troops = state.troops.filter(t => t.hp > 0);
+  
+  document.getElementById('battleOverlay').classList.remove('active');
+  document.getElementById('nextDayBtn').style.display = 'none';
+  document.getElementById('skipBattleBtn').style.display = 'block';
+  document.getElementById('speed1Btn').disabled = false;
+  document.getElementById('speed2Btn').disabled = false;
+  document.getElementById('speed3Btn').disabled = false;
+
+  if (result.won) {
+    state.gold += result.goldReward;
+    log(`Wave ${state.wave} defeated! Earned ${result.goldReward}g.`, 'win');
     state.wave++;
     state.day++;
     renderAll();
@@ -1088,7 +1200,7 @@ function resolveBattle(won) {
     if (state.wave > WAVES.length) {
       showFinalVictory();
     } else {
-      showResult(true, `The horde is driven back. You earned ${goldReward} gold.\n\nPrepare for Wave ${state.wave}...`);
+      showResult(true, `The horde is driven back. You earned ${result.goldReward} gold.\n\nPrepare for Wave ${state.wave}...`);
     }
   } else {
     log(`Wave ${state.wave} — the garrison fell. All is lost.`, 'lose');
