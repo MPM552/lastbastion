@@ -587,16 +587,20 @@
 // DEFINITIONS
 // ═══════════════════════════════════════════
 
+const MAX_TROOPS = 5;
+
 const TROOP_DEFS = {
-  swordsman: { name:'Swordsman', icon:'⚔️', level:1, cost:2, maxHp:20, hpMin:8, hpMax:12, turnsTilAtk:2, critChance:0, desc:'Reliable frontline fighter.' },
-  archer:    { name:'Archer',    icon:'🏹', level:1, cost:3, maxHp:12, hpMin:6, hpMax:10, turnsTilAtk:3, critChance:0, airCapable:true, desc:'Can target Moths.' },
-  mage:      { name:'Mage',      icon:'🔮', level:2, cost:5, maxHp:10, hpMin:4, hpMax:16, turnsTilAtk:4, critChance:0, airCapable:true, desc:'High variance dmg; targets Moths.' },
-  giant:     { name:'Giant',     icon:'🗿', level:2, cost:5, maxHp:50, hpMin:6, hpMax:6,  turnsTilAtk:6, critChance:0.25, desc:'Massive HP; 25% crit chance.' },
+  swordsman: { name:'Swordsman', icon:'⚔️', level:1, cost:2, maxHp:20, hpMin:8,  hpMax:12, turnsTilAtk:2, critChance:0,    desc:'Reliable frontline fighter.' },
+  archer:    { name:'Archer',    icon:'🏹', level:1, cost:3, maxHp:12, hpMin:6,  hpMax:10, turnsTilAtk:3, critChance:0,    airCapable:true, desc:'Can target Moths.' },
+  mage:      { name:'Mage',      icon:'🔮', level:2, cost:5, maxHp:10, hpMin:4,  hpMax:16, turnsTilAtk:4, critChance:0,    airCapable:true, desc:'High variance dmg; targets Moths.' },
+  giant:     { name:'Giant',     icon:'🗿', level:2, cost:5, maxHp:50, hpMin:6,  hpMax:6,  turnsTilAtk:6, critChance:0.25, desc:'Massive HP; 25% crit chance.' },
+  tiger:     { name:'Tiger',     icon:'🐯', level:2, cost:6, maxHp:40, hpMin:8,  hpMax:12, turnsTilAtk:5, critChance:0.50, desc:'50% crit chance. Ferocious.' },
 };
 
 const ENEMY_DEFS = {
-  goblin: { name:'Goblin', icon:'👺', maxHp:11, hpMin:1, hpMax:4, turnsTilAtk:1, critChance:0.25, airOnly:false },
-  moth:   { name:'Moth',   icon:'🦋', maxHp:15, hpMin:3, hpMax:5, turnsTilAtk:3, critChance:0,    airOnly:true  },
+  goblin: { name:'Goblin', icon:'👺', maxHp:11, hpMin:1, hpMax:4,  turnsTilAtk:1, critChance:0.25, airOnly:false, lifesteal:0 },
+  moth:   { name:'Moth',   icon:'🦋', maxHp:15, hpMin:1, hpMax:2,  turnsTilAtk:3, critChance:0,    airOnly:true,  lifesteal:0 },
+  lich:   { name:'Lich',   icon:'💀', maxHp:70, hpMin:8, hpMax:12, turnsTilAtk:2, critChance:0,    airOnly:false, lifesteal:10, isBoss:true },
 };
 
 // Wave definitions: [{type, count}, ...]
@@ -604,6 +608,8 @@ const WAVES = [
   [ {type:'goblin', count:2} ],
   [ {type:'goblin', count:3}, {type:'moth', count:1} ],
   [ {type:'goblin', count:4}, {type:'moth', count:2} ],
+  [ {type:'goblin', count:5}, {type:'moth', count:2} ],
+  [ {type:'goblin', count:3}, {type:'moth', count:2}, {type:'lich', count:1} ],
 ];
 
 // ═══════════════════════════════════════════
@@ -671,6 +677,8 @@ function makeEnemy(typeKey) {
     atkTimer: 0,
     critChance: def.critChance,
     airOnly: def.airOnly,
+    lifesteal: def.lifesteal || 0,
+    isBoss: !!def.isBoss,
     alive: true,
   };
 }
@@ -684,12 +692,24 @@ function generateCharChoices() {
   const keys = Object.keys(TROOP_DEFS);
   const lv1 = keys.filter(k => TROOP_DEFS[k].level === 1);
   const lv2 = keys.filter(k => TROOP_DEFS[k].level === 2);
-  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
-  const c1 = pick(lv1);
-  let c2 = pick(lv1);
-  if (lv1.length > 1) { while (c2 === c1) c2 = pick(lv1); }
-  const c3 = pick(lv2);
-  return [c1, c2, c3];
+
+  function weightedPick(pool) {
+    return Math.random() < 0.75 ? lv1[Math.floor(Math.random()*lv1.length)] : lv2[Math.floor(Math.random()*lv2.length)];
+  }
+
+  const chosen = [];
+  let attempts = 0;
+  while (chosen.length < 3 && attempts < 100) {
+    attempts++;
+    const pick = weightedPick();
+    if (!chosen.includes(pick)) chosen.push(pick);
+  }
+  // Fallback: fill with any remaining unique keys if needed
+  for (const k of keys) {
+    if (chosen.length >= 3) break;
+    if (!chosen.includes(k)) chosen.push(k);
+  }
+  return chosen;
 }
 
 let charSelectCallback = null;
@@ -727,13 +747,15 @@ function showCharacterSelect(isFirst) {
     `;
     card.onclick = () => {
       if (!isFirst && state.gold < def.cost) return;
+      if (!isFirst && state.troops.filter(t => t.hp > 0).length >= MAX_TROOPS) return;
       if (!isFirst) state.gold -= def.cost;
       state.troops.push(makeTroop(key));
       overlay.classList.remove('active');
       renderAll();
       if (charSelectCallback) { charSelectCallback(); charSelectCallback = null; }
     };
-    if (!isFirst && state.gold < def.cost) card.style.opacity = '0.4';
+    const atCap = !isFirst && state.troops.filter(t => t.hp > 0).length >= MAX_TROOPS;
+    if (!isFirst && (state.gold < def.cost || atCap)) card.style.opacity = '0.4';
     opts.appendChild(card);
   });
 
@@ -745,17 +767,38 @@ function showCharacterSelect(isFirst) {
 // ═══════════════════════════════════════════
 function renderShop() {
   const list = document.getElementById('shopList');
+  const aliveTroops = state.troops.filter(t => t.hp > 0).length;
+  const atCap = aliveTroops >= MAX_TROOPS;
+
   const items = [
     { key:'swordsman', label:'Recruit Swordsman', desc:`20 HP · 8–12 dmg · Atk every 2t`, cost:2 },
     { key:'archer',    label:'Recruit Archer',    desc:`12 HP · 6–10 dmg · Atk every 3t · Air`, cost:3 },
     { key:'mage',      label:'Recruit Mage',      desc:`10 HP · 4–16 dmg · Atk every 4t · Air`, cost:5 },
-    { key:'giant',     label:'Recruit Giant',     desc:`50 HP · 6 dmg · Atk every 6t · 25% crit`, cost:5 },
+    { key:'giant',     label:'Recruit Giant',     desc:`50 HP · 6 dmg · Atk every 6t · 25% crit · Blocks 25% dmg to allies`, cost:5 },
+    { key:'tiger',     label:'Recruit Tiger',     desc:`40 HP · 8–12 dmg · Atk every 5t · 50% crit`, cost:6 },
   ];
 
-  list.innerHTML = '';
+  list.innerHTML = `<div style="font-size:0.65rem;color:${atCap ? 'var(--blood-bright)' : 'var(--parchment-dim)'};margin-bottom:8px;font-family:'Cinzel',serif;letter-spacing:0.1em;">
+    Garrison: ${aliveTroops} / ${MAX_TROOPS}${atCap ? ' — Full' : ''}
+  </div>`;
+
+  const canHeal = state.gold >= 3 && state.troops.some(t => t.hp > 0 && t.hp < t.maxHp);
+  const healDiv = document.createElement('div');
+  healDiv.className = 'shop-item' + (canHeal ? '' : ' disabled');
+  healDiv.style.marginBottom = '6px';
+  healDiv.innerHTML = `
+    <div class="shop-icon">🏥</div>
+    <div class="shop-info">
+      <div class="shop-name">Field Medic <span style="font-size:0.58rem;color:var(--teal);border:1px solid var(--teal);border-radius:2px;padding:1px 5px;font-family:'Cinzel',serif;letter-spacing:0.1em;">Supply</span></div>
+      <div class="shop-desc">Heal all troops to half their max HP</div>
+    </div>
+    <button class="buy-btn" ${canHeal ? '' : 'disabled'} onclick="buyHeal()">3g</button>
+  `;
+  list.appendChild(healDiv);
+
   items.forEach(item => {
     const def = TROOP_DEFS[item.key];
-    const canAfford = state.gold >= item.cost;
+    const canAfford = state.gold >= item.cost && !atCap;
     const div = document.createElement('div');
     div.className = 'shop-item' + (canAfford ? '' : ' disabled');
     div.innerHTML = `
@@ -772,9 +815,20 @@ function renderShop() {
   });
 }
 
+function buyHeal() {
+  if (state.gold < 3) return;
+  const healable = state.troops.filter(t => t.hp > 0 && t.hp < t.maxHp);
+  if (!healable.length) return;
+  state.gold -= 3;
+  healable.forEach(t => { t.hp = Math.max(t.hp, Math.floor(t.maxHp / 2)); });
+  log(`Medic tended the wounded — all troops raised to half HP.`, 'heal');
+  renderAll();
+}
+
 function buyTroop(key) {
   const def = TROOP_DEFS[key];
   if (state.gold < def.cost) return;
+  if (state.troops.filter(t => t.hp > 0).length >= MAX_TROOPS) return;
   state.gold -= def.cost;
   state.troops.push(makeTroop(key));
   log(`Recruited a ${def.name} for ${def.cost}g.`, 'info');
@@ -835,11 +889,16 @@ function renderWavePreview() {
     preview.innerHTML = '';
     return;
   }
-  title.textContent = `Wave ${state.wave} of ${WAVES.length}`;
+  const isBossWave = WAVES[state.wave-1].some(g => ENEMY_DEFS[g.type].isBoss);
+  title.textContent = `Wave ${state.wave} of ${WAVES.length}${isBossWave ? ' ⚠ Miniboss' : ''}`;
+  if (isBossWave) title.style.color = 'var(--purple)'; else title.style.color = 'var(--gold)';
   const wave = WAVES[state.wave - 1];
   preview.innerHTML = wave.map(g => {
     const def = ENEMY_DEFS[g.type];
-    return `<div class="enemy-chip">${def.icon} ${g.count}× ${def.name}</div>`;
+    const bossStyle = def.isBoss
+      ? 'background:rgba(136,85,204,0.18);border-color:var(--purple);color:var(--purple);'
+      : '';
+    return `<div class="enemy-chip" style="${bossStyle}">${def.icon} ${g.count}× ${def.name}${def.isBoss ? ' [BOSS]' : ''}</div>`;
   }).join('');
 }
 
@@ -898,7 +957,10 @@ function startBattle() {
   battleSkipped = false;
   renderBattleFrame();
   document.getElementById('battleOverlay').classList.add('active');
-  document.getElementById('battleWaveTitle').textContent = `Night Falls — Wave ${state.wave}`;
+  const isBossWave = WAVES[state.wave-1].some(g => ENEMY_DEFS[g.type].isBoss);
+  document.getElementById('battleWaveTitle').textContent = isBossWave
+    ? `⚠ Night Falls — Wave ${state.wave} · MINIBOSS`
+    : `Night Falls — Wave ${state.wave}`;
 
   setSpeed(1);
   scheduleTick();
@@ -927,16 +989,24 @@ function battleTick() {
     ally.atkTimer++;
     if (ally.atkTimer >= ally.turnsTilAtk) {
       ally.atkTimer = 0;
-      // Pick target: air-capable can hit any, otherwise can only hit non-airOnly
-      const targets = aliveEnemies.filter(e => e.alive && (ally.airCapable || !e.airOnly));
-      if (!targets.length) return;
+      // Re-query live enemies at attack time (allies earlier in the loop may have killed some)
+      const currentAlive = enemies.filter(e => e.alive);
+      let targets = currentAlive.filter(e => ally.airCapable || !e.airOnly);
+      let glancingBlow = false;
+      if (!targets.length) {
+        if (currentAlive.length && currentAlive.every(e => e.airOnly)) {
+          targets = currentAlive; glancingBlow = true;
+        } else return;
+      }
       const target = targets[Math.floor(Math.random() * targets.length)];
       let dmg = rand(ally.hpMin, ally.hpMax);
       let isCrit = Math.random() < ally.critChance;
       if (isCrit) dmg *= 2;
+      if (glancingBlow) dmg = Math.max(1, Math.floor(dmg * 0.25));
       target.hp -= dmg;
       if (target.hp <= 0) { target.hp = 0; target.alive = false; }
-      battleLog(`${ally.icon} ${ally.name} hits ${target.icon} ${target.name} for ${dmg}${isCrit ? ' (CRIT!)' : ''} — ${Math.max(0, target.hp)} HP left`, isCrit ? 'crit' : 'dmg');
+      const suffix = glancingBlow ? ' (glancing)' : isCrit ? ' (CRIT!)' : '';
+      battleLog(`${ally.icon} ${ally.name} hits ${target.icon} ${target.name} for ${dmg}${suffix} — ${Math.max(0, target.hp)} HP left`, isCrit ? 'crit' : 'dmg');
     }
   });
 
@@ -946,16 +1016,33 @@ function battleTick() {
     enemy.atkTimer++;
     if (enemy.atkTimer >= enemy.turnsTilAtk) {
       enemy.atkTimer = 0;
-      // Moths attack air-capable units preferentially, or random ally
-      let targets = aliveAllies.filter(a => a.alive);
+      let targets = allies.filter(a => a.alive);
       if (!targets.length) return;
       const target = targets[Math.floor(Math.random() * targets.length)];
       let dmg = rand(enemy.hpMin, enemy.hpMax);
       let isCrit = Math.random() < enemy.critChance;
       if (isCrit) dmg *= 2;
+      // Giant block: if target is not a Giant and an alive Giant exists, absorb 25%
+      let blockMsg = '';
+      if (target.typeKey !== 'giant') {
+        const giant = allies.find(a => a.alive && a.typeKey === 'giant');
+        if (giant) {
+          const blocked = Math.max(1, Math.floor(dmg * 0.25));
+          dmg -= blocked;
+          giant.battleHp = Math.max(0, giant.battleHp - blocked);
+          if (giant.battleHp <= 0) { giant.battleHp = 0; giant.alive = false; }
+          blockMsg = ` · 🗿 Giant blocks ${blocked}`;
+        }
+      }
       target.battleHp -= dmg;
       if (target.battleHp <= 0) { target.battleHp = 0; target.alive = false; }
-      battleLog(`${enemy.icon} ${enemy.name} strikes ${target.icon} ${target.name} for ${dmg}${isCrit ? ' (CRIT!)' : ''} — ${Math.max(0, target.battleHp)} HP left`, isCrit ? 'crit' : 'dmg');
+      let msg = `${enemy.icon} ${enemy.name} strikes ${target.icon} ${target.name} for ${dmg}${isCrit ? ' (CRIT!)' : ''}${blockMsg} — ${Math.max(0, target.battleHp)} HP left`;
+      if (enemy.lifesteal > 0) {
+        const healed = Math.min(enemy.lifesteal, enemy.maxHp - enemy.hp);
+        enemy.hp = Math.min(enemy.maxHp, enemy.hp + enemy.lifesteal);
+        if (healed > 0) msg += ` · Lifesteal +${healed} HP`;
+      }
+      battleLog(msg, isCrit ? 'crit' : 'dmg');
     }
   });
 
@@ -1030,11 +1117,17 @@ function skipBattle() {
       ally.atkTimer++;
       if (ally.atkTimer >= ally.turnsTilAtk) {
         ally.atkTimer = 0;
-        const targets = aliveEnemies.filter(e => e.alive && (ally.airCapable || !e.airOnly));
-        if (!targets.length) return;
+        let targets = aliveEnemies.filter(e => e.alive && (ally.airCapable || !e.airOnly));
+        let glancing = false;
+        if (!targets.length) {
+          const onlyMothsLeft = aliveEnemies.filter(e => e.alive).every(e => e.airOnly);
+          if (onlyMothsLeft) { targets = aliveEnemies.filter(e => e.alive); glancing = true; }
+          else return;
+        }
         const target = targets[Math.floor(Math.random() * targets.length)];
         let dmg = rand(ally.hpMin, ally.hpMax);
         if (Math.random() < ally.critChance) dmg *= 2;
+        if (glancing) dmg = Math.max(1, Math.floor(dmg * 0.25));
         target.hp -= dmg;
         if (target.hp <= 0) { target.hp = 0; target.alive = false; }
       }
@@ -1050,8 +1143,18 @@ function skipBattle() {
         const target = targets[Math.floor(Math.random() * targets.length)];
         let dmg = rand(enemy.hpMin, enemy.hpMax);
         if (Math.random() < enemy.critChance) dmg *= 2;
+        if (target.typeKey !== 'giant') {
+          const giant = allies.find(a => a.alive && a.typeKey === 'giant');
+          if (giant) {
+            const blocked = Math.max(1, Math.floor(dmg * 0.25));
+            dmg -= blocked;
+            giant.battleHp = Math.max(0, giant.battleHp - blocked);
+            if (giant.battleHp <= 0) { giant.battleHp = 0; giant.alive = false; }
+          }
+        }
         target.battleHp -= dmg;
         if (target.battleHp <= 0) { target.battleHp = 0; target.alive = false; }
+        if (enemy.lifesteal > 0) enemy.hp = Math.min(enemy.maxHp, enemy.hp + enemy.lifesteal);
       }
     });
   }
@@ -1100,13 +1203,14 @@ function renderBattleUnits() {
   enemiesEl.innerHTML = '';
   battleState.enemies.forEach(e => {
     const pct = Math.max(0, (e.hp / e.maxHp) * 100);
-    const barColor = pct > 50 ? 'var(--blood-bright)' : 'var(--gold)';
+    const barColor = e.isBoss ? 'var(--purple)' : (pct > 50 ? 'var(--blood-bright)' : 'var(--gold)');
     const div = document.createElement('div');
     div.className = 'battle-unit' + (!e.alive ? ' dead' : '');
+    if (e.isBoss) div.style.borderColor = 'var(--purple)';
     div.innerHTML = `
-      <div class="battle-unit-name">${e.icon} ${e.name}${e.airOnly ? ' <span style="font-size:0.55rem;color:var(--ice);">[air]</span>' : ''}</div>
+      <div class="battle-unit-name">${e.icon} ${e.name}${e.isBoss ? ' <span style="font-size:0.55rem;color:var(--purple);font-family:\'Cinzel\',serif;">[BOSS]</span>' : ''}${e.airOnly ? ' <span style="font-size:0.55rem;color:var(--ice);">[air]</span>' : ''}${e.lifesteal ? ' <span style="font-size:0.55rem;color:var(--green);">[lifesteal]</span>' : ''}</div>
       <div style="background:var(--stone-mid);border-radius:2px;height:4px;margin-top:4px;">
-        <div style="width:${pct}%;height:4px;border-radius:2px;background:${barColor};transition:width 0.2s;"></div>
+        <div style="width:${pct}%;height:4px;border-radius:2px;background:${barColor};transition:width 0.3s;"></div>
       </div>
       <div style="font-size:0.6rem;color:var(--parchment-dim);margin-top:2px;">${e.hp}/${e.maxHp} HP</div>
     `;
@@ -1165,7 +1269,7 @@ function showFinalVictory() {
   const btns = document.getElementById('resultButtons');
   title.textContent = 'The Bastion Holds';
   title.className = 'result-title win';
-  msgEl.textContent = 'Three nights of darkness endured. Three waves of horror repelled. The horde retreats into shadow, and the Bastion stands — battered, bloodied, but unbroken.\n\nYou have won.';
+  msgEl.textContent = 'Five nights of darkness endured. The Lich unmade. Three waves of horror repelled. The horde retreats into shadow, and the Bastion stands — battered, bloodied, but unbroken.\n\nYou have won.';
   btns.innerHTML = '<button class="result-btn" onclick="document.getElementById(\'resultOverlay\').classList.remove(\'active\'); newGame();">Play Again</button>';
   overlay.classList.add('active');
 }
