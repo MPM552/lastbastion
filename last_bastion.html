@@ -648,9 +648,9 @@ const WAVES = [
   [ {type:'goblin', count:5}, {type:'moth', count:2} ],
   [ {type:'goblin', count:3}, {type:'moth', count:2}, {type:'lich', count:1} ],
   [ {type:'goblin', count:4}, {type:'swampMonster', count:2}, {type:'skeleton', count:2} ],
-  [ {type:'skeleton', count:4}, {type:'swampMonster', count:3}, {type:'moth', count:1} ],
-  [ {type:'skeleton', count:5}, {type:'swampMonster', count:3}, {type:'lich', count:1} ],
-  [ {type:'skeleton', count:6}, {type:'swampMonster', count:4} ],
+  [ {type:'skeleton', count:3}, {type:'swampMonster', count:2}, {type:'moth', count:3} ],
+  [ {type:'skeleton', count:4}, {type:'swampMonster', count:3}, {type:'lich', count:1} ],
+  [ {type:'skeleton', count:5}, {type:'swampMonster', count:3}, {type:'moth', count:2} ],
   [ {type:'demon', count:1}, {type:'skeleton', count:2}, {type:'swampMonster', count:2} ],
 ];
 
@@ -1427,8 +1427,10 @@ function unequipItem(troopId, slot) {
 
 function applyEquipmentEffects(troop, eqTypeKey, eqDef) {
   if (eqDef.hpMult) {
+    const oldMaxHp = troop.maxHp;
     troop.maxHp = Math.floor(troop.maxHp * eqDef.hpMult);
-    troop.hp = Math.min(troop.hp, troop.maxHp);
+    const bonus = troop.maxHp - oldMaxHp;
+    troop.hp = Math.min(troop.hp + bonus, troop.maxHp);
   }
   if (eqDef.dmgMult) {
     troop.hpMin = Math.floor(troop.hpMin * eqDef.dmgMult);
@@ -1448,7 +1450,10 @@ function removeEquipmentEffects(troop, eqTypeKey) {
   
   // Reverse multiplicative effects by dividing
   if (eqDef.hpMult) {
+    const oldMaxHp = troop.maxHp;
     troop.maxHp = Math.floor(troop.maxHp / eqDef.hpMult);
+    const removed = oldMaxHp - troop.maxHp;
+    troop.hp = Math.max(1, troop.hp - removed);
     troop.hp = Math.min(troop.hp, troop.maxHp);
   }
   if (eqDef.dmgMult) {
@@ -1743,6 +1748,10 @@ function clearLog() { document.getElementById('logPanel').innerHTML = ''; }
 // ═══════════════════════════════════════════
 // BOOT
 // ═══════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') e.preventDefault();
+});
+
 function startGame() {
   document.getElementById('introOverlay').style.opacity = '0';
   document.getElementById('introOverlay').style.pointerEvents = 'none';
