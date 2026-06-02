@@ -648,9 +648,9 @@ const WAVES = [
   [ {type:'goblin', count:5}, {type:'moth', count:2} ],
   [ {type:'goblin', count:3}, {type:'moth', count:2}, {type:'lich', count:1} ],
   [ {type:'goblin', count:4}, {type:'swampMonster', count:2}, {type:'skeleton', count:2} ],
-  [ {type:'skeleton', count:3}, {type:'swampMonster', count:2}, {type:'moth', count:3} ],
-  [ {type:'skeleton', count:4}, {type:'swampMonster', count:3}, {type:'lich', count:1} ],
-  [ {type:'skeleton', count:5}, {type:'swampMonster', count:3}, {type:'moth', count:2} ],
+  [ {type:'skeleton', count:2}, {type:'swampMonster', count:2}, {type:'moth', count:3} ],
+  [ {type:'skeleton', count:3}, {type:'swampMonster', count:3}, {type:'lich', count:1} ],
+  [ {type:'skeleton', count:3}, {type:'swampMonster', count:3}, {type:'moth', count:3} ],
   [ {type:'demon', count:1}, {type:'skeleton', count:2}, {type:'swampMonster', count:2} ],
 ];
 
@@ -1727,7 +1727,7 @@ function showFinalVictory() {
   const btns = document.getElementById('resultButtons');
   title.textContent = 'The Bastion Holds';
   title.className = 'result-title win';
-  msgEl.textContent = 'Five nights of darkness endured. The Lich unmade. Three waves of horror repelled. The horde retreats into shadow, and the Bastion stands — battered, bloodied, but unbroken.\n\nYou have won.';
+  msgEl.textContent = 'Ten nights of darkness endured. The Lich unmade. The demon exercised. Waves and waves of horror repelled. The horde retreats into shadow, and the Bastion stands — battered, bloodied, but unbroken.\n\nYou have won.';
   btns.innerHTML = '<button class="result-btn" onclick="document.getElementById(\'resultOverlay\').classList.remove(\'active\'); newGame();">Play Again</button>';
   overlay.classList.add('active');
 }
