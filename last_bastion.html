@@ -527,6 +527,11 @@
   </div>
 </div>
 
+<!-- EQUIPMENT MODAL -->
+<div class="modal-overlay" id="modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--panel-bg);border:2px solid var(--gold);border-radius:8px;padding:20px;max-width:400px;max-height:80vh;overflow-y:auto;box-shadow:0 0 20px rgba(0,0,0,0.8);" id="modalContent"></div>
+</div>
+
 <!-- MAIN UI -->
 <div class="wrapper">
   <header>
@@ -572,7 +577,7 @@
       </div>
     </div>
 
-    <!-- RIGHT: SHOP + END DAY -->
+    <!-- RIGHT: SHOP + EQUIPMENT + END DAY -->
     <div style="display:flex;flex-direction:column;gap:12px;">
       <div class="panel">
         <div class="panel-title">Barracks & Supplies</div>
@@ -580,6 +585,10 @@
         <div class="end-day-wrap" style="margin-top:14px;">
           <button class="end-day-btn" id="endDayBtn" onclick="endDay()">Rest & Face the Night</button>
         </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Equipment Inventory</div>
+        <div id="equipmentInventory"></div>
       </div>
     </div>
   </div>
@@ -601,15 +610,33 @@ const TROOP_DEFS = {
 };
 
 const ENEMY_DEFS = {
-  goblin: { name:'Goblin', icon:'👺', maxHp:11, hpMin:1, hpMax:4,  turnsTilAtk:1, critChance:0.25, airOnly:false, lifesteal:0 },
-  moth:   { name:'Moth',   icon:'🦋', maxHp:15, hpMin:1, hpMax:2,  turnsTilAtk:3, critChance:0,    airOnly:true,  lifesteal:0 },
-  lich:   { name:'Lich',   icon:'💀', maxHp:100, hpMin:10, hpMax:15, turnsTilAtk:2, critChance:0,    airOnly:false, lifesteal:10, isBoss:true },
+  goblin:       { name:'Goblin',        icon:'👺', maxHp:9,  hpMin:1,  hpMax:4,   turnsTilAtk:1, critChance:0.25, airOnly:false, lifesteal:0 },
+  moth:         { name:'Moth',          icon:'🦋', maxHp:13,  hpMin:1,  hpMax:2,   turnsTilAtk:3, critChance:0,    airOnly:true,  lifesteal:0 },
+  lich:         { name:'Lich',          icon:'💀', maxHp:100, hpMin:10, hpMax:15,  turnsTilAtk:2, critChance:0,    airOnly:false, lifesteal:10, isBoss:true },
+  swampMonster: { name:'Swamp Monster', icon:'🐢', maxHp:40,  hpMin:14, hpMax:20,  turnsTilAtk:5, critChance:0,    airOnly:false, lifesteal:0 },
+  skeleton:     { name:'Skeleton',      icon:'🦴', maxHp:13,  hpMin:1,  hpMax:2,   turnsTilAtk:2, critChance:0,    airOnly:false, lifesteal:0 },
+  demon:        { name:'Demon',         icon:'👹', maxHp:200, hpMin:15, hpMax:50,  turnsTilAtk:3, critChance:0.1,  airOnly:false, lifesteal:0, isBoss:true },
 };
 
 // Level 2 stat upgrades for troops
 const TROOP_UPGRADES = {
-  swordsman: { maxHp: 25, hpMin: 11, hpMax: 15 },
-  archer:    { maxHp: 15, hpMin: 8,  hpMax: 12 },
+  swordsman: { maxHp: 25, hpMin: 11, hpMax: 15, reqGarrisonLevel: 2 },
+  archer:    { maxHp: 15, hpMin: 8,  hpMax: 12, reqGarrisonLevel: 2 },
+  mage:      { maxHp: 16, hpMin: 8,  hpMax: 20, reqGarrisonLevel: 3 },
+  giant:     { maxHp: 70, hpMin: 10, hpMax: 14, reqGarrisonLevel: 3 },
+  tiger:     { maxHp: 60, hpMin: 0,  hpMax: 0, critChance: 0.75, reqGarrisonLevel: 3 },
+};
+
+// Equipment definitions
+const EQUIPMENT_DEFS = {
+  // Tier 1
+  quickBoots:     { name: 'Quick Boots', icon: '👢', tier: 1, tta: -1 },
+  leatherArmor:   { name: 'Leather Armor', icon: '🛡️', tier: 1, hpMult: 1.25 },
+  sharpenedSteel: { name: 'Sharpened Steel', icon: '⚔️', tier: 1, dmgMult: 1.25 },
+  // Tier 2
+  fullPlate:      { name: 'Full Plate', icon: '🏰', tier: 2, hpMult: 2, tta: 2 },
+  hotShot:        { name: 'Hot Shot', icon: '🔥', tier: 2, dmgMult: 1.5, critChance: 0.25 },
+  roguesCape:     { name: "Rogue's Cape", icon: '🌙', tier: 2, evasion: 0.25 },
 };
 
 
@@ -620,6 +647,11 @@ const WAVES = [
   [ {type:'goblin', count:4}, {type:'moth', count:2} ],
   [ {type:'goblin', count:5}, {type:'moth', count:2} ],
   [ {type:'goblin', count:3}, {type:'moth', count:2}, {type:'lich', count:1} ],
+  [ {type:'goblin', count:4}, {type:'swampMonster', count:2}, {type:'skeleton', count:2} ],
+  [ {type:'skeleton', count:4}, {type:'swampMonster', count:3}, {type:'moth', count:1} ],
+  [ {type:'skeleton', count:5}, {type:'swampMonster', count:3}, {type:'lich', count:1} ],
+  [ {type:'skeleton', count:6}, {type:'swampMonster', count:4} ],
+  [ {type:'demon', count:1}, {type:'skeleton', count:2}, {type:'swampMonster', count:2} ],
 ];
 
 // ═══════════════════════════════════════════
@@ -643,6 +675,8 @@ function newGame() {
     won: false,
     maxTroops: 5,
     garrisonLevel: 1,
+    equipment: [],
+    nextEquipId: 1,
   };
   battleSpeed = 1;
   clearLog();
@@ -671,6 +705,7 @@ function makeTroop(typeKey) {
     critChance: def.critChance,
     airCapable: !!def.airCapable,
     alive: true,
+    equipment: [null, null],
   };
 }
 
@@ -888,10 +923,11 @@ function upgradeTroop(id) {
   // Apply stat upgrades
   const upgrade = TROOP_UPGRADES[troop.typeKey];
   if (upgrade) {
-    troop.maxHp = upgrade.maxHp;
-    troop.hpMin = upgrade.hpMin;
-    troop.hpMax = upgrade.hpMax;
-    troop.hp = upgrade.maxHp;
+    if (upgrade.maxHp !== undefined) troop.maxHp = upgrade.maxHp;
+    if (upgrade.hpMin !== undefined) troop.hpMin = upgrade.hpMin;
+    if (upgrade.hpMax !== undefined) troop.hpMax = upgrade.hpMax;
+    if (upgrade.critChance !== undefined) troop.critChance = upgrade.critChance;
+    troop.hp = troop.maxHp;
   }
   
   log(`${troop.name} promoted to Level 2!`, 'info');
@@ -928,7 +964,9 @@ function renderRoster() {
       ? '<span class="level-badge lv1" style="border-color:' + def.color + ';background:rgba(' + hexToRgb(def.color) + ',0.18);color:' + def.color + ';">Lv1</span>'
       : '<span class="level-badge lv2" style="border-color:' + def.color + ';background:rgba(' + hexToRgb(def.color) + ',0.18);color:' + def.color + ';">Lv2</span>';
     
-    const canUpgrade = alive && t.level === 1 && state.garrisonLevel >= 2 && TROOP_UPGRADES[t.typeKey];
+    const upgrade = TROOP_UPGRADES[t.typeKey];
+    const reqGarrisonLevel = upgrade ? (upgrade.reqGarrisonLevel || 2) : 0;
+    const canUpgrade = alive && t.level === 1 && state.garrisonLevel >= reqGarrisonLevel && upgrade;
     const upgradeCost = canUpgrade ? TROOP_DEFS[t.typeKey].cost + 1 : 0;
     const canAffordUpgrade = canUpgrade && state.gold >= upgradeCost;
     
@@ -937,6 +975,23 @@ function renderRoster() {
       const btnStyle = canAffordUpgrade ? 'padding:4px 8px;font-size:0.65rem;' : 'padding:4px 8px;font-size:0.65rem;opacity:0.35;cursor:not-allowed;';
       const btnDisabled = canAffordUpgrade ? '' : 'disabled';
       upgradeBtn = `<button class="buy-btn" style="${btnStyle}" ${btnDisabled} onclick="upgradeTroop(${t.id})">${upgradeCost}g</button>`;
+    }
+    
+    // Build equipment slots HTML
+    let equipmentSlotsHtml = '';
+    if (alive) {
+      equipmentSlotsHtml = '<div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;">';
+      t.equipment.forEach((eqId, slotIdx) => {
+        if (eqId !== null) {
+          if (t.equipmentData === undefined) t.equipmentData = {};
+          const typeKey = t.equipmentData[slotIdx];
+          const eqName = EQUIPMENT_DEFS[typeKey] ? EQUIPMENT_DEFS[typeKey].name : 'Unknown';
+          equipmentSlotsHtml += `<button class="buy-btn" style="padding:3px 6px;font-size:0.65rem;flex:1;min-width:60px;" onclick="unequipItem(${t.id}, ${slotIdx})">${EQUIPMENT_DEFS[typeKey].icon} ${eqName}</button>`;
+        } else {
+          equipmentSlotsHtml += `<div style="width:24px;height:24px;border:1px dashed var(--gold);border-radius:3px;background:rgba(0,0,0,0.3);"></div>`;
+        }
+      });
+      equipmentSlotsHtml += '</div>';
     }
     
     div.innerHTML = `
@@ -948,6 +1003,7 @@ function renderRoster() {
         </div>
         <div class="troop-stats">${t.hp}/${t.maxHp} HP · ${t.hpMin}–${t.hpMax} dmg</div>
         <div class="attack-pip-row">${pips.join('')}</div>
+        ${equipmentSlotsHtml}
       </div>
       <div style="display:flex;gap:4px;flex-direction:column;align-items:center;flex-shrink:0;">
         ${upgradeBtn}
@@ -959,6 +1015,14 @@ function renderRoster() {
 }
 
 function removeTroop(id) {
+  const troop = state.troops.find(t => t.id === id);
+  if (troop) {
+    troop.equipment.forEach(eqId => {
+      if (eqId !== null) {
+        state.equipment = state.equipment.filter(e => e.id !== eqId);
+      }
+    });
+  }
   state.troops = state.troops.filter(t => t.id !== id);
   renderAll();
 }
@@ -995,6 +1059,7 @@ function renderAll() {
   document.getElementById('hudWave').textContent = state.wave;
   document.getElementById('hudDay').textContent = state.day;
   renderRoster();
+  renderEquipmentInventory();
   renderShop();
   renderWavePreview();
   document.getElementById('endDayBtn').disabled = !!state.gameOver;
@@ -1068,6 +1133,22 @@ function battleTick() {
   const aliveAllies = allies.filter(a => a.alive);
   const aliveEnemies = enemies.filter(e => e.alive);
 
+  // Skeleton revival: revive skeletons that have been dead for 4 turns, but not if all enemies are already dead
+  enemies.filter(e => e.typeKey === 'skeleton' && !e.alive).forEach(skeleton => {
+    if (skeleton.turnsDead === undefined) skeleton.turnsDead = 0;
+    skeleton.turnsDead++;
+    // Only revive if there are still alive enemies (meaning battle hasn't been decided)
+    const hasAliveEnemies = enemies.some(e => e.alive);
+    if (skeleton.turnsDead >= 4 && hasAliveEnemies) {
+      skeleton.alive = true;
+      skeleton.battleHp = skeleton.maxHp;
+      skeleton.hp = skeleton.maxHp;
+      skeleton.atkTimer = 0;
+      skeleton.turnsDead = 0;
+      battleLog(`${skeleton.icon} ${skeleton.name} rises from the grave!`, 'warn');
+    }
+  });
+
   // Allies attack
   aliveAllies.forEach(ally => {
     if (!ally.alive) return;
@@ -1107,10 +1188,27 @@ function battleTick() {
       let dmg = rand(enemy.hpMin, enemy.hpMax);
       let isCrit = Math.random() < enemy.critChance;
       if (isCrit) dmg *= 2;
+      // Evasion check: if target has evasion equipment, might dodge entirely
+      let dodgedMsg = '';
+      let evaded = false;
+      target.equipment.forEach(eqId => {
+        if (eqId !== null && !evaded) {
+          const eq = state.equipment.find(e => e.id === eqId);
+          if (eq && EQUIPMENT_DEFS[eq.typeKey].evasion) {
+            if (Math.random() < EQUIPMENT_DEFS[eq.typeKey].evasion) {
+              evaded = true;
+              dodgedMsg = ` · ${eq.icon} Evaded!`;
+            }
+          }
+        }
+      });
+      if (evaded) dmg = 0;
+      
       // Giant block: if target is not a Giant and an alive Giant exists, absorb 25%
       let blockMsg = '';
-      if (target.typeKey !== 'giant') {
-        const giant = allies.find(a => a.alive && a.typeKey === 'giant');
+      if (!evaded && target.typeKey !== 'giant') {
+        const giantsAlive = allies.filter(a => a.alive && a.typeKey === 'giant');
+        const giant = giantsAlive.length > 0 ? giantsAlive.reduce((max, g) => g.battleHp > max.battleHp ? g : max) : null;
         if (giant) {
           const blocked = Math.max(1, Math.floor(dmg * 0.25));
           dmg -= blocked;
@@ -1121,7 +1219,7 @@ function battleTick() {
       }
       target.battleHp -= dmg;
       if (target.battleHp <= 0) { target.battleHp = 0; target.alive = false; }
-      let msg = `${enemy.icon} ${enemy.name} strikes ${target.icon} ${target.name} for ${dmg}${isCrit ? ' (CRIT!)' : ''}${blockMsg} — ${Math.max(0, target.battleHp)} HP left`;
+      let msg = `${enemy.icon} ${enemy.name} strikes ${target.icon} ${target.name} for ${dmg}${isCrit ? ' (CRIT!)' : ''}${blockMsg}${dodgedMsg} — ${Math.max(0, target.battleHp)} HP left`;
       if (enemy.lifesteal > 0) {
         const healed = Math.min(enemy.lifesteal, enemy.maxHp - enemy.hp);
         enemy.hp = Math.min(enemy.maxHp, enemy.hp + enemy.lifesteal);
@@ -1180,7 +1278,16 @@ function proceedNextDay() {
   const result = state.battleResult;
   state.battleResult = null;
   
-  // Clear dead troops from garrison
+  // Clear dead troops from garrison and remove their equipment
+  const deadTroops = state.troops.filter(t => t.hp <= 0);
+  deadTroops.forEach(t => {
+    t.equipment.forEach(eqId => {
+      if (eqId !== null) {
+        const idx = state.equipment.findIndex(e => e.id === eqId);
+        if (idx >= 0) state.equipment.splice(idx, 1);
+      }
+    });
+  });
   state.troops = state.troops.filter(t => t.hp > 0);
   
   document.getElementById('battleOverlay').classList.remove('active');
@@ -1193,6 +1300,10 @@ function proceedNextDay() {
   if (result.won) {
     state.gold += result.goldReward;
     log(`Wave ${state.wave} defeated! Earned ${result.goldReward}g.`, 'win');
+    
+    // Generate equipment drops
+    generateEquipmentDrops(state.wave);
+    
     state.wave++;
     state.day++;
     renderAll();
@@ -1208,6 +1319,236 @@ function proceedNextDay() {
     renderAll();
     showResult(false, 'Your last defender has fallen. The darkness swallows the Bastion.\n\nAll is silence.');
   }
+}
+
+function generateEquipmentDrops(wave) {
+  const dropRates = {
+    1: { tier1: 0.33, tier2: 0.10 },
+    2: { tier1: 0.33, tier2: 0.10 },
+    3: { tier1: 0.33, tier2: 0.10 },
+    4: { tier1: 1.00, tier2: 0.15 },
+    5: { tier1: 1.00, tier2: 0.25 },
+    6: { tier1: 0.75, tier2: 0.50 },
+    7: { tier1: 0.75, tier2: 0.50 },
+    8: { tier1: 0.75, tier2: 0.50 },
+    9: { tier1: 1.00, tier2: 1.00 },
+  };
+  
+  const rates = dropRates[wave] || { tier1: 0.33, tier2: 0.10 };
+  const allEquipment = Object.keys(EQUIPMENT_DEFS);
+  const tier1Eq = allEquipment.filter(k => EQUIPMENT_DEFS[k].tier === 1);
+  const tier2Eq = allEquipment.filter(k => EQUIPMENT_DEFS[k].tier === 2);
+  
+  let drops = [];
+  
+  // Tier 1 roll
+  if (Math.random() < rates.tier1) {
+    const eq = tier1Eq[Math.floor(Math.random() * tier1Eq.length)];
+    drops.push(eq);
+  }
+  
+  // Tier 2 roll
+  if (Math.random() < rates.tier2) {
+    const eq = tier2Eq[Math.floor(Math.random() * tier2Eq.length)];
+    drops.push(eq);
+  }
+  
+  // Add drops to inventory
+  drops.forEach(typeKey => {
+    state.equipment.push({
+      id: state.nextEquipId++,
+      typeKey,
+      icon: EQUIPMENT_DEFS[typeKey].icon,
+      name: EQUIPMENT_DEFS[typeKey].name,
+    });
+    log(`Found ${EQUIPMENT_DEFS[typeKey].icon} ${EQUIPMENT_DEFS[typeKey].name}`, 'item');
+  });
+}
+
+function equipItem(troopId, equipId, slot) {
+  const troop = state.troops.find(t => t.id === troopId);
+  if (!troop) return;
+  
+  const eq = state.equipment.find(e => e.id === equipId);
+  if (!eq) return;
+  
+  // Remove existing equipment in this slot and reverse effects
+  if (troop.equipment[slot] !== null) {
+    if (troop.equipmentData === undefined) troop.equipmentData = {};
+    const oldTypeKey = troop.equipmentData[slot];
+    if (oldTypeKey) {
+      removeEquipmentEffects(troop, oldTypeKey);
+    }
+  }
+  
+  // Add new equipment
+  troop.equipment[slot] = equipId;
+  if (troop.equipmentData === undefined) troop.equipmentData = {};
+  troop.equipmentData[slot] = eq.typeKey;
+  
+  const eqDef = EQUIPMENT_DEFS[eq.typeKey];
+  applyEquipmentEffects(troop, eq.typeKey, eqDef);
+  
+  // Remove from inventory
+  state.equipment = state.equipment.filter(e => e.id !== equipId);
+  
+  log(`${troop.name} equipped ${eqDef.icon} ${eqDef.name}`, 'info');
+  renderAll();
+}
+
+function unequipItem(troopId, slot) {
+  const troop = state.troops.find(t => t.id === troopId);
+  if (!troop || troop.equipment[slot] === null) return;
+  
+  if (troop.equipmentData === undefined) troop.equipmentData = {};
+  const typeKey = troop.equipmentData[slot];
+  const equipId = troop.equipment[slot];
+  
+  // Reverse stat effects
+  if (typeKey) {
+    removeEquipmentEffects(troop, typeKey);
+  }
+  
+  // Add back to inventory
+  const eqDef = EQUIPMENT_DEFS[typeKey];
+  state.equipment.push({
+    id: equipId,
+    typeKey,
+    icon: eqDef.icon,
+    name: eqDef.name,
+  });
+  
+  troop.equipment[slot] = null;
+  delete troop.equipmentData[slot];
+  
+  log(`${troop.name} unequipped ${eqDef.icon} ${eqDef.name}`, 'info');
+  renderAll();
+}
+
+function applyEquipmentEffects(troop, eqTypeKey, eqDef) {
+  if (eqDef.hpMult) {
+    troop.maxHp = Math.floor(troop.maxHp * eqDef.hpMult);
+    troop.hp = Math.min(troop.hp, troop.maxHp);
+  }
+  if (eqDef.dmgMult) {
+    troop.hpMin = Math.floor(troop.hpMin * eqDef.dmgMult);
+    troop.hpMax = Math.floor(troop.hpMax * eqDef.dmgMult);
+  }
+  if (eqDef.tta !== undefined) {
+    troop.turnsTilAtk = Math.max(1, troop.turnsTilAtk + eqDef.tta);
+  }
+  if (eqDef.critChance) {
+    troop.critChance = Math.min(0.99, troop.critChance + eqDef.critChance);
+  }
+}
+
+function removeEquipmentEffects(troop, eqTypeKey) {
+  const eqDef = EQUIPMENT_DEFS[eqTypeKey];
+  if (!eqDef) return;
+  
+  // Reverse multiplicative effects by dividing
+  if (eqDef.hpMult) {
+    troop.maxHp = Math.floor(troop.maxHp / eqDef.hpMult);
+    troop.hp = Math.min(troop.hp, troop.maxHp);
+  }
+  if (eqDef.dmgMult) {
+    troop.hpMin = Math.floor(troop.hpMin / eqDef.dmgMult);
+    troop.hpMax = Math.floor(troop.hpMax / eqDef.dmgMult);
+  }
+  if (eqDef.tta !== undefined) {
+    troop.turnsTilAtk = Math.max(1, troop.turnsTilAtk - eqDef.tta);
+  }
+  if (eqDef.critChance) {
+    troop.critChance = Math.max(0, troop.critChance - eqDef.critChance);
+  }
+}
+
+function renderEquipmentInventory() {
+  const container = document.getElementById('equipmentInventory');
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  if (state.equipment.length === 0) {
+    container.innerHTML = '<div style="font-size:0.8rem;color:var(--gray);">No items yet...</div>';
+    return;
+  }
+  
+  const titleDiv = document.createElement('div');
+  titleDiv.style.cssText = 'color:var(--light);font-weight:bold;margin-bottom:8px;font-size:0.9rem;';
+  titleDiv.textContent = '⚔️ Equipment Inventory';
+  container.appendChild(titleDiv);
+  
+  const itemsDiv = document.createElement('div');
+  itemsDiv.style.display = 'grid';
+  itemsDiv.style.gridTemplateColumns = 'repeat(auto-fill, minmax(70px, 1fr))';
+  itemsDiv.style.gap = '4px';
+  
+  state.equipment.forEach(eq => {
+    const itemBtn = document.createElement('button');
+    itemBtn.className = 'buy-btn';
+    itemBtn.style.cssText = 'padding:6px;font-size:0.75rem;display:flex;flex-direction:column;align-items:center;gap:2px;height:auto;cursor:pointer;';
+    itemBtn.innerHTML = `<div style="font-size:1.2rem;">${eq.icon}</div><div>${eq.name}</div>`;
+    itemBtn.onclick = () => showEquipmentMenu(eq);
+    itemsDiv.appendChild(itemBtn);
+  });
+  
+  container.appendChild(itemsDiv);
+}
+
+function showEquipmentMenu(eq) {
+  const troopsWithSlots = state.troops.filter(t => t.hp > 0).map(t => ({
+    troop: t,
+    slots: t.equipment.map((eqId, i) => ({ slotIdx: i, occupied: eqId !== null }))
+  }));
+  
+  const modalContent = document.getElementById('modalContent');
+  modalContent.innerHTML = '';
+  
+  const titleDiv = document.createElement('div');
+  titleDiv.style.cssText = 'color:var(--light);font-weight:bold;margin-bottom:12px;font-size:1.1rem;';
+  titleDiv.innerHTML = `${eq.icon} ${eq.name}`;
+  modalContent.appendChild(titleDiv);
+  
+  const instructionDiv = document.createElement('div');
+  instructionDiv.style.cssText = 'font-size:0.9rem;color:var(--gray);margin-bottom:12px;';
+  instructionDiv.textContent = 'Select a troop and slot:';
+  modalContent.appendChild(instructionDiv);
+  
+  troopsWithSlots.forEach(({ troop, slots }) => {
+    const troopDiv = document.createElement('div');
+    troopDiv.style.cssText = 'margin-bottom:8px;padding:8px;background:rgba(100,100,100,0.3);border-radius:4px;border-left:3px solid var(--gold);';
+    
+    const troopNameDiv = document.createElement('div');
+    troopNameDiv.style.cssText = 'color:var(--light);font-weight:bold;margin-bottom:6px;';
+    troopNameDiv.innerHTML = `${troop.icon} ${troop.name}`;
+    troopDiv.appendChild(troopNameDiv);
+    
+    slots.forEach(({ slotIdx, occupied }) => {
+      const slotBtn = document.createElement('button');
+      slotBtn.className = 'buy-btn';
+      slotBtn.style.cssText = 'width:100%;margin:3px 0;font-size:0.85rem;';
+      slotBtn.textContent = `Slot ${slotIdx + 1} ${occupied ? '(occupied)' : '(empty)'}`;
+      slotBtn.onclick = () => {
+        equipItem(troop.id, eq.id, slotIdx);
+        document.getElementById('modal').style.display = 'none';
+      };
+      troopDiv.appendChild(slotBtn);
+    });
+    
+    modalContent.appendChild(troopDiv);
+  });
+  
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'buy-btn';
+  closeBtn.style.cssText = 'width:100%;margin-top:12px;';
+  closeBtn.textContent = 'Cancel';
+  closeBtn.onclick = () => {
+    document.getElementById('modal').style.display = 'none';
+  };
+  modalContent.appendChild(closeBtn);
+  
+  document.getElementById('modal').style.display = 'flex';
 }
 
 function skipBattle() {
